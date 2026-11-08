@@ -5,6 +5,9 @@
 __pycache__/
 *.pyc
 
+# Runtime database
+src/backend/bin_identifier.db
+
 # Environment variables
 .env
 
