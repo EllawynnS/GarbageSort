@@ -1,0 +1,54 @@
+[33m53e460f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Made the arudino global to potenitally work?
+[33m6273b5f[m Merge branch 'arduino'
+[33md2c20ee[m[33m ([m[1;31morigin/arduino[m[33m, [m[1;32marduino[m[33m)[m LED?
+[33mbfb3826[m Works?
+[33mf2cb92a[m Changed some of the integration
+[33m1d7e9b5[m Merge branch 'frontend_edits'
+[33me6f04f2[m changed somethings
+[33md91bdbd[m Deleted reduduant frontend folder
+[33me1b89cf[m updated arduino
+[33me582384[m Merge branch 'vision'
+[33m693c33f[m Merge branch 'frontend_intergration'
+[33mcba479b[m Added new UI changes, need to update camera interations
+[33m4719d5c[m Merged the database
+[33m1ca36d8[m Added function
+[33mf402b7d[m[33m ([m[1;31morigin/database[m[33m, [m[1;32mdatabase[m[33m)[m Added databaase logic for the api.py
+[33m2e09561[m Database changes
+[33mbf89fea[m[33m ([m[1;31morigin/frontend_intergration[m[33m)[m Working on intergrating front and backend
+[33m7874fd0[m[33m ([m[1;31morigin/vision[m[33m, [m[1;32mvision[m[33m)[m Added jpg and jpeg compatibility
+[33m846370c[m Arduino testing
+[33me1564c8[m[33m ([m[1;31morigin/frontend[m[33m)[m new features, unfinished
+[33m51fc94b[m Good enough version
+[33mb38f95f[m Merge pull request #3 from EllawynnS/vision
+[33m7b68dfa[m Add files via upload
+[33m5aa0b50[m dependices and front end
+[33m9b47eaa[m Merge branch 'main' of https://github.com/EllawynnS/GarbageSort
+[33ma56b754[m Updated frontend integration
+[33m9c09323[m Merge pull request #2 from EllawynnS/vision
+[33m72a168a[m merging
+[33m0734441[m another try
+[33mcf26475[m deleted
+[33mb0b318a[m[33m ([m[1;32mfrontend[m[33m)[m commit
+[33m16c8a82[m integration?
+[33m15326db[m Added the integration
+[33mce4ddb9[m Got Camera Working
+[33m57e0693[m Merge branch 'Backend'
+[33m7f7f87e[m[33m ([m[1;31morigin/Backend[m[33m, [m[1;32mBackend[m[33m)[m Added the database
+[33mc3efe0d[m Added the db backend
+[33mea18071[m Got model to work on test aluminum can!!!
+[33md81a397[m Adding a potential database for the system
+[33mc8c486b[m Added an api.md
+[33madd8f8f[m I think its gotten to a semi-working state
+[33me5ccb6f[m Rename test/trashcan.jpg to test/images/trashcan.jpg
+[33md2aea02[m Add files via upload
+[33m36f2b00[m Change test image path in test_model.py
+[33m599146d[m Test classifier.py
+[33m0856e2c[m staging some functions so that we can begin testing the api with random values
+[33m30e2821[m agents.md
+[33m857b2a3[m Merge pull request #1 from EllawynnS/vision
+[33m6881f88[m hi
+[33md87e24c[m Added readme
+[33m56afe43[m Added a gitignore to prevent caching issues and allow people to uv sync within it to make it easier for everyone
+[33m33af2fa[m Added the install and files like project.toml to begin the setup and execution of fastAPI
+[33m2b48cba[m[33m ([m[1;31morigin/Hardware_and_Firmware[m[33m)[m Delete .idea directory
+[33mcd5ee1f[m Added Template for Repository
