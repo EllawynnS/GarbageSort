@@ -1,15 +1,23 @@
 """Waste image classification with a pinned Hugging Face ViT model."""
 
+from __future__ import annotations
+
+import os
+
+# Let PyTorch fall back to CPU for any operator MPS doesn't support.
+# Must be set before torch is imported.
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 from pathlib import Path
 from typing import Any
 
 import torch
-from PIL import Image, UnidentifiedImageError
 from huggingface_hub import snapshot_download
-
+from PIL import Image, UnidentifiedImageError
 
 MODEL_ID = "watersplash/waste-classification"
 MODEL_REVISION = "4f35b7f56ddc109934b53a79280233fb4fdb9009"
+SUPPORTED_FORMATS = {"JPEG", "JPG", "PNG"}
 
 _processor: Any = None
 _model: Any = None
@@ -71,7 +79,7 @@ def preprocess_image(image: Image.Image, processor: Any) -> dict[str, torch.Tens
 
 
 def classify_waste(image_path: str) -> dict[str, Any]:
-    """Classify a JPEG and print its top prediction and sorted probabilities.
+    """Classify a JPG or PNG and print its top prediction and sorted probabilities.
 
     Percentages are returned at full precision and rounded to one decimal place
     only when printed. The model and processor are cached after first load.
@@ -82,12 +90,14 @@ def classify_waste(image_path: str) -> dict[str, Any]:
 
     try:
         with Image.open(path) as opened_image:
-            if opened_image.format != "JPEG":
-                raise ValueError(f"Expected a JPEG image: {path}")
+            if opened_image.format not in SUPPORTED_FORMATS:
+                raise ValueError(
+                    f"Expected a JPG, JPEG or PNG image (got {opened_image.format}): {path}"
+                )
             image = opened_image.convert("RGB")
             image.load()
     except (UnidentifiedImageError, OSError) as error:
-        raise ValueError(f"Invalid or corrupted JPEG image: {path}") from error
+        raise ValueError(f"Invalid or corrupted image: {path}") from error
 
     processor, model, device = _load_model()
     inputs = preprocess_image(image, processor)
@@ -119,3 +129,13 @@ def classify_waste(image_path: str) -> dict[str, Any]:
     print("\n========================================")
 
     return result
+
+
+def get_top_waste_prediction(image_path: str) -> tuple[str, float]:
+    """Return the most likely waste type and its probability.
+
+    Returns:
+        (waste_type, confidence), where confidence is a percentage (0-100).
+    """
+    result = classify_waste(image_path)
+    return result["class"], result["confidence"]
