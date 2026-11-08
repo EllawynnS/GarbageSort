@@ -1,115 +1,291 @@
-## Overview
 
-This repository contains the software and embedded firmware for our Hackcamp 2026 project.
+# GarbageSort
 
-The Hackcamp theme is:
+GarbageSort is a Hackcamp 2026 project exploring an AI-assisted waste-sorting system. The prototype uses a webcam to capture an item, a Python backend to process the image and recommend a waste bin, and a desktop interface to display the result.
 
-> Identify a problem facing a community and build a solution that makes a meaningful difference.
+The project combines computer vision, software development, and embedded hardware. The Arduino integration and physical sorting mechanism are still under development.
 
-The specific community problem, proposed solution, and project name will be documented here once the team has finalized them.
+## 1. Current Prototype
 
-## System Overview
+| Component | Technology | Status |
+|---|---|---|
+| Desktop frontend | PySide6 + Qt Quick (QML) | Implemented |
+| Backend API | FastAPI + Uvicorn | Implemented |
+| Camera | Logitech USB Webcam + OpenCV | Implemented |
+| Image capture | OpenCV | Implemented |
+| AI model | PyTorch + Hugging Face ViT | Model implemented, backend integration pending |
+| Image processing | Pillow | Implemented in model code |
+| Sorting rules | Python | Implemented |
+| Database | SQLite | Implemented |
+| Microcontroller | Arduino | Planned |
+| Physical sorting mechanism | LEDs / actuators / bins | In development |
 
-The current planned prototype uses:
+## 2. How the Application Works
 
-- **Laptop / Desktop:** Runs the main Python application, computer vision, backend coordination, and user interface.
-- **Logitech HD USB Webcam:** Captures images and video for computer vision using OpenCV.
-- **Arduino:** Controls connected electronics and peripherals, communicating with the computer over USB serial.
-- **Python:** Used for camera acquisition, image processing, AI inference, hardware communication, and system coordination.
-- **Frontend:** To be determined. Streamlit is a candidate for a Python-based prototype.
+1. The webcam continuously captures images in the background.
+2. The frontend displays the live camera feed.
+3. The user selects **Pause and Analyze** to capture an image.
+4. The frontend sends a request to the FastAPI backend.
+5. The backend freezes the current camera frame and processes the image.
+6. The classification function returns a waste category and confidence score.
+7. Sorting rules map the category to a recommended bin.
+8. The classification result and captured image are stored in SQLite.
+9. The frontend retrieves and displays the result.
+10. The user can resume the camera feed.
 
-> **Camera note:** The Logitech webcam connects over USB. 
+**Current AI limitation:** The active classifier in `src/backend/classifier.py` currently returns placeholder random predictions. The separate ViT implementation in `src/vision/classifier.py` has not yet been connected to the active backend classification pipeline.
 
-## Repository Structure
+The backend also returns an LED index for each recommended bin. Physical LED control through the Arduino has not yet been implemented.
+
+## 3. Repository Structure
 
 ```text
-.
+GarbageSort/
 ├── README.md
 ├── SYSTEM_ARCHITECTURE.md
 ├── requirements.txt
-├── .gitignore
+├── requirements-backend.txt
+├── pyproject.toml
+├── .python-version
 ├── main.py
+│
 ├── config/
+│
 ├── src/
-│   ├── hardware/
-│   │   ├── camera.py
-│   │   ├── arduino.py
-│   │   └── led.py
-│   ├── vision/
-│   │   ├── preprocessing.py
-│   │   └── classifier.py
+│   ├── SmartWasteFrontend/
+│   │   ├── main.py
+│   │   ├── requirements.txt
+│   │   ├── SmartWasteFrontend/
+│   │   │   └── Main.qml
+│   │   ├── badges/
+│   │   └── recyclableContainersGuide.png
+│   │
 │   ├── backend/
+│   │   ├── __init__.py
+│   │   ├── api.py
+│   │   ├── classifier.py
+│   │   ├── db.py
+│   │   ├── sorting_rules.py
 │   │   └── system_manager.py
-│   └── frontend/
-│       ├── app.py
-│       └── components.py
+│   │
+│   ├── hardware/
+│   │   ├── __init__.py
+│   │   ├── camera.py
+│   │   ├── led.py
+│   │   └── api/
+│   │       └── camera_routes.py
+│   │
+│   ├── vision/
+│   │   ├── classifier.py
+│   │   ├── preprocessing.py
+│   │   └── requirements.txt
+│   │
+│   └── garbagesort/
+│
 ├── firmware/
 │   └── arduino/
 │       └── arduino.ino
-├── tests/
-├── data/
-│   ├── samples/
-│   └── processed/
-├── models/
-└── docs/
+│
+└── test/
+    ├── __init__.py
+    └── images/
 ```
 
-## Getting Started
+## 4. Requirements
 
-### 1. Clone the Repository
+- Python 3.13
+- USB webcam supported by OpenCV
+- Internet connection for downloading the Hugging Face model
+- macOS, Windows, or Linux
+
+### Python Dependencies
+
+**Backend:**
+- `uvicorn`
+- `fastapi`
+- `pillow`
+- `torch`
+- `huggingface_hub`
+- `opencv-python`
+- `python-multipart`
+- `transformers`
+- `safetensors`
+
+**Frontend:**
+- `PySide6`
+- `requests`
+
+## 5. Getting Started
+
+The project uses Python 3.13 and a local virtual environment. The following commands are for macOS with Homebrew Python.
+
+### Step 1. Create the virtual environment
+
+Run these commands from the repository root:
 
 ```bash
+rm -rf .venv
 
+/opt/homebrew/opt/python@3.13/bin/python3.13 -m venv .venv
+
+source .venv/bin/activate
 ```
 
-### 2. Create a Virtual Environment
-
-macOS / Linux:
+### Step 2. Install backend dependencies
 
 ```bash
+python -m pip install --upgrade pip
 
+pip install uvicorn
+pip install fastapi
+pip install pillow
+pip install torch
+pip install huggingface_hub
+pip install opencv-python
+pip install python-multipart
+pip install transformers
+pip install safetensors
 ```
 
-Windows:
+### Step 3. Run the backend
 
-```powershell
+**Terminal 1: Backend**
 
-```
-
-### 3. Install Dependencies
+From the repository root, activate the virtual environment if it is not already active.
 
 ```bash
+source .venv/bin/activate
 
+cd src
+
+uvicorn backend.api:app --host 0.0.0.0 --port 8000
 ```
 
-### 4. Connect Hardware
+The backend runs at:
 
-- Connect the Logitech webcam to the computer over USB.
-- Connect the Arduino to the computer over USB.
-- Identify the Arduino serial port.
-- Ensure the Arduino firmware and Python serial settings use the same baud rate.
+```text
+http://127.0.0.1:8000
+```
 
-Common serial port examples:
+API documentation:
 
+```text
+http://127.0.0.1:8000/docs
+```
 
-### 5. Run the Application
+Keep this terminal running.
 
-The application entry point and run command will be added once the frontend and backend are implemented.
+### Step 4. Install frontend dependencies
 
-## Development Conventions
+Open a second terminal.
 
-- Hardware-specific code belongs in `src/hardware/`.
-- Image processing and model inference belong in `src/vision/`.
-- Application logic and coordination belong in `src/backend/`.
-- User-interface code belongs in `src/frontend/`.
+Navigate to the repository root and activate the same virtual environment.
+
+```bash
+cd /path/to/GarbageSort
+
+source .venv/bin/activate
+
+pip install PySide6
+pip install requests
+```
+
+### Step 5. Run the frontend
+
+**Terminal 2: Frontend**
+
+```bash
+cd src/SmartWasteFrontend
+
+python main.py
+```
+
+The PySide6 application will launch and communicate with the backend through HTTP requests.
+
+**Important:** Both terminals must use the same `.venv` environment. You do not need to create a second virtual environment.
+
+## 6. Camera Setup
+
+The Logitech webcam connects directly to the computer through USB.
+
+OpenCV is used to access the camera and retrieve image frames.
+
+Current configuration:
+
+- Camera interface: USB / UVC
+- Python library: OpenCV (`cv2`)
+- Default camera index: `0`
+- Requested resolution: 1280 × 720
+
+If the webcam is not detected, check the camera index in:
+
+```text
+src/hardware/api/camera_routes.py
+```
+
+The camera should be connected before starting the backend.
+
+## 7. API Endpoints
+
+The frontend communicates with the backend through HTTP requests.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/` | Backend health check |
+| POST | `/start` | Enables scanning |
+| POST | `/stop` | Disables scanning |
+| POST | `/scan` | Captures and classifies the current frame |
+| POST | `/classify` | Classifies an uploaded image |
+| GET | `/latest` | Retrieves the latest classification |
+| GET | `/camera/frame` | Retrieves the current camera frame |
+| POST | `/camera/freeze` | Freezes the current camera frame |
+| POST | `/camera/unfreeze` | Resumes camera capture |
+| GET | `/camera/status` | Returns camera status |
+| GET | `/camera/stream` | Streams camera frames |
+
+See `src/backend/api.md` for additional API details.
+
+## 8. Waste Categories
+
+The current sorting rules map four application categories to recommended bins.
+
+| Category | Recommended Bin | LED Index |
+|---|---|---|
+| `food_scraps` | Compost | 0 |
+| `recyclable_container` | Recycling | 1 |
+| `paper` | Paper | 2 |
+| `garbage` | Garbage | 3 |
+
+Predictions with confidence below `0.20` are currently routed to the garbage bin.
+
+These are prototype rules and should be validated against the waste-sorting requirements of the target community.
+
+## 9. Development Guidelines
+
+- Hardware-related code belongs in `src/hardware/`.
+- API endpoints and application coordination belong in `src/backend/`.
+- Image classification and model inference belong in `src/vision/`.
+- Frontend interface code belongs in `src/SmartWasteFrontend/`.
 - Arduino firmware belongs in `firmware/arduino/`.
-- Add tests for individual modules and end-to-end behaviour.
-- Avoid committing virtual environments, credentials, large datasets, or model weights without an agreed storage strategy.
-- Document changes to shared interfaces and communication protocols.
+- Test images belong in `test/images/`.
+- Keep API response formats and category names consistent between frontend and backend.
+- Test individual modules before integrating them.
+- Do not commit virtual environments, credentials, or large model files.
 
+## 10. Current Development Tasks
 
-## Documentation
+| Task | Status |
+|---|---|
+| Webcam integration | Implemented |
+| Live camera display | Implemented |
+| Image capture and freeze | Implemented |
+| FastAPI backend | Implemented |
+| PySide6 frontend | Implemented |
+| SQLite result storage | Implemented |
+| Sorting category mapping | Implemented |
+| Connect ViT model to backend classifier | Pending |
+| Arduino serial communication | Pending |
+| Physical LED control | Pending |
+| Physical sorting mechanism | In development |
 
-- [System Architecture](SYSTEM_ARCHITECTURE.md): Hardware connections, software modules, data flow, and integration decisions.
-- `docs/`: Additional design notes, wiring diagrams, testing procedures, and meeting decisions.
-
+For more information about the software modules, hardware interfaces, and system workflow, see [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md).
