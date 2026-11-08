@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Shapes
-import QtCore
 
 ApplicationWindow {
     id: root
@@ -23,32 +22,18 @@ ApplicationWindow {
     property string tip: ""
     property int daysOnline: 0
 
+    // Stats and earned badges come from the API (which reads the database)
+    property var stats: ({ "scanned": 0, "recycled": 0, "composted": 0, "garbage": 0, "days": 0 })
+    property var earned: []
+    property bool statsLoaded: false
+
     Behavior on shownConfidence {
         NumberAnimation { duration: 1400; easing.type: Easing.OutCubic }
     }
 
-    // Saved between runs (needs setOrganizationName/setApplicationName in main.py)
-    Settings {
-        id: store
-        category: "SmartWaste"
-        property int scanned: 0
-        property int recycled: 0     // recyclable containers + paper
-        property int composted: 0    // food scraps
-        property int garbage: 0
-        property double firstRun: 0
-        property string earned: ""
-    }
-
-    readonly property var statValues: ({
-        "scanned": store.scanned,
-        "recycled": store.recycled,
-        "composted": store.composted,
-        "garbage": store.garbage,
-        "days": root.daysOnline
-    })
-
     // ---------- BADGES ----------
     // Images live in badges/<id>.png. Draw your own and overwrite badge1.png ... badge8.png.
+    // The ids and goals here must match BADGE_RULES in database.py.
     readonly property var badgeDefs: [
         { "id": "badge1", "title": "First scan",        "desc": "Scan 1 item",          "stat": "scanned",   "goal": 1 },
         { "id": "badge2", "title": "Getting going",     "desc": "Scan 5 items",         "stat": "scanned",   "goal": 5 },
@@ -60,51 +45,40 @@ ApplicationWindow {
         { "id": "badge8", "title": "One week online",   "desc": "Stay online for 7 days", "stat": "days",    "goal": 7 }
     ]
 
-    function isUnlocked(d) { return statValues[d.stat] >= d.goal }
+    readonly property int badgeCount: earned.length
 
-    readonly property int badgeCount: {
-        var c = 0
-        for (var i = 0; i < badgeDefs.length; i++)
-            if (statValues[badgeDefs[i].stat] >= badgeDefs[i].goal) c++
-        return c
-    }
+    // Called every time the backend pushes new stats (JSON text)
+    function applyStats(json) {
+        var s
+        try { s = JSON.parse(json) } catch (e) { return }
 
-    function checkBadges() {
-        var have = store.earned === "" ? [] : store.earned.split(",")
+        // no toast for badges that were already earned before the app opened
         var fresh = []
-        for (var i = 0; i < badgeDefs.length; i++) {
-            var d = badgeDefs[i]
-            if (isUnlocked(d) && have.indexOf(d.id) < 0) { have.push(d.id); fresh.push(d) }
+        if (statsLoaded) {
+            for (var i = 0; i < badgeDefs.length; i++) {
+                var d = badgeDefs[i]
+                if (s.earned.indexOf(d.id) >= 0 && earned.indexOf(d.id) < 0) fresh.push(d)
+            }
         }
+
+        stats = s
+        earned = s.earned
+        daysOnline = s.days
+        statsLoaded = true
+
         if (fresh.length > 0) {
-            store.earned = have.join(",")
             toast.badgeId = fresh[0].id
             toast.text = fresh.length > 1 ? fresh.length + " new badges unlocked" : "Badge unlocked: " + fresh[0].title
             toastAnim.restart()
         }
     }
 
-    function refreshDays() {
-        if (store.firstRun === 0) store.firstRun = Date.now()
-        daysOnline = Math.floor((Date.now() - store.firstRun) / 86400000)
-        checkBadges()
-    }
-
-    function resetProgress() {
-        store.scanned = 0; store.recycled = 0; store.composted = 0; store.garbage = 0
-        store.earned = ""
-        store.firstRun = Date.now()
-        daysOnline = 0
-    }
-
-    Component.onCompleted: refreshDays()
-    Timer { interval: 600000; running: true; repeat: true; onTriggered: root.refreshDays() }
-
     // ---------- CONTENT PER BIN ----------
-    // "guide": picture shown in the info screen (path relative to this file). If it is missing, a list is shown instead.
+    // "guide": picture shown in the info screen (path relative to this file, which is one folder
+    // below the project root, so we go up with ../). If it is missing, a list is shown instead.
     readonly property var binInfo: ({
         "food": {
-            "short": "Food scraps", "card": "#0F8A43", "glow": "#2BE08A", "guide": "guides/food.png",
+            "short": "Food scraps", "card": "#0F8A43", "glow": "#2BE08A", "guide": "../guides/food.png",
             "tip": "Remove stickers and packaging first.",
             "accepted": ["Fruit and vegetable scraps", "Coffee grounds", "Tea bags", "Eggshells",
                          "Bread and grains", "Meat and bones", "Food-soiled paper"],
@@ -118,7 +92,7 @@ ApplicationWindow {
             ]
         },
         "recyclable": {
-            "short": "Recycling", "card": "#5F6064", "glow": "#C4C9D0", "guide": "guides/recyclable.png",
+            "short": "Recycling", "card": "#5F6064", "glow": "#C4C9D0", "guide": "../guides/recyclable.png",
             "tip": "Empty any liquid before placing it in the bin.",
             "accepted": ["Plastic containers", "Metal cans", "Glass bottles and jars", "Cartons",
                          "Cups and lids (no sleeves)"],
@@ -131,7 +105,7 @@ ApplicationWindow {
             ]
         },
         "paper": {
-            "short": "Paper", "card": "#0A5A9E", "glow": "#4DA6FF", "guide": "guides/paper.png",
+            "short": "Paper", "card": "#0A5A9E", "glow": "#4DA6FF", "guide": "../guides/paper.png",
             "tip": "Keep it dry and free of food.",
             "accepted": ["Newspaper", "Office paper", "Mail and flyers", "Flattened cardboard", "Paper bags"],
             "avoid": ["Greasy or wet paper", "Tissues and napkins", "Wax-coated paper"],
@@ -143,7 +117,7 @@ ApplicationWindow {
             ]
         },
         "garbage": {
-            "short": "Garbage", "card": "#1B201E", "glow": "#E8ECEA", "guide": "guides/garbage.png",
+            "short": "Garbage", "card": "#1B201E", "glow": "#E8ECEA", "guide": "../guides/garbage.png",
             "tip": "When unsure, bin it. Don't contaminate recycling.",
             "accepted": ["Chip bags and wrappers", "Plastic film", "Styrofoam", "Broken ceramics",
                          "Cup sleeves", "Diapers"],
@@ -178,12 +152,7 @@ ApplicationWindow {
         shownConfidence = conf
         tip = info.tip
         mode = "result"
-
-        store.scanned++
-        if (category === "recyclable" || category === "paper") store.recycled++
-        else if (category === "food") store.composted++
-        else store.garbage++
-        checkBadges()
+        // scan counts and badges are handled by the database now (see applyStats)
     }
 
     function resetToLive() {
@@ -587,7 +556,7 @@ ApplicationWindow {
                             badgeId: modelData.id
                             title: modelData.title
                             desc: modelData.desc
-                            unlocked: root.statValues[modelData.stat] >= modelData.goal
+                            unlocked: root.earned.indexOf(modelData.id) >= 0
                         }
                     }
                 }
@@ -911,10 +880,10 @@ ApplicationWindow {
 
             Repeater {
                 model: [
-                    { "l": "Items scanned", "v": store.scanned },
-                    { "l": "Items recycled", "v": store.recycled },
-                    { "l": "Food scraps composted", "v": store.composted },
-                    { "l": "Sent to garbage", "v": store.garbage },
+                    { "l": "Items scanned", "v": root.stats.scanned },
+                    { "l": "Items recycled", "v": root.stats.recycled },
+                    { "l": "Food scraps composted", "v": root.stats.composted },
+                    { "l": "Sent to garbage", "v": root.stats.garbage },
                     { "l": "Days online", "v": root.daysOnline },
                     { "l": "Badges earned", "v": root.badgeCount + " / " + root.badgeDefs.length }
                 ]
@@ -934,7 +903,7 @@ ApplicationWindow {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.resetProgress()
+                    onClicked: backend.resetProgress()
                 }
             }
         }
@@ -1181,7 +1150,7 @@ ApplicationWindow {
         NumberAnimation { target: factText; property: "opacity"; to: 1; duration: 300 }
     }
 
-    // ---------- TEMP: manual test keys (delete when done) ----------
+        // ---------- TEMP: manual test keys (delete when done) ----------
     Shortcut { sequence: "1"; onActivated: root.showResult("food", 0.95) }
     Shortcut { sequence: "2"; onActivated: root.showResult("recyclable", 0.72) }
     Shortcut { sequence: "3"; onActivated: root.showResult("paper", 0.55) }
@@ -1196,5 +1165,6 @@ ApplicationWindow {
         function onResultChanged(item, bin, conf) {
             root.showResult(root.binKey(bin), conf)
         }
+        function onStatsChanged(json) { root.applyStats(json) }
     }
 }

@@ -28,12 +28,15 @@ BIN_NAMES = {
 class AppController(QObject):
     statusChanged = Signal(str)
     resultChanged = Signal(str, str, float)    # item, bin, confidence
+    statsChanged = Signal(str)                 # stats + earned badges as JSON text
 
     def __init__(self):
         super().__init__()
         self._last_result = None
+        self._last_stats = None
 
         threading.Thread(target=self._poll_latest, daemon=True).start()
+        threading.Thread(target=self._poll_stats, daemon=True).start()
 
     @Property(str, constant=True)
     def apiBase(self):
@@ -56,6 +59,16 @@ class AppController(QObject):
             args=(["/start", "/camera/unfreeze"], "System ready"),
             daemon=True,
         ).start()
+
+    @Slot()
+    def resetProgress(self):
+        def run():
+            try:
+                requests.post(f"{API}/stats/reset", timeout=5)
+                self._last_stats = None      # forces the next poll to push fresh stats
+            except requests.RequestException:
+                self.statusChanged.emit("Can't reach the API")
+        threading.Thread(target=run, daemon=True).start()
 
     def _call(self, paths, ok_status):
         """POST to each API path in order. Report the first one that fails."""
@@ -96,6 +109,18 @@ class AppController(QObject):
 
             time.sleep(1)
 
+    def _poll_stats(self):
+        while True:
+            try:
+                response = requests.get(f"{API}/stats", timeout=3)
+                if response.status_code == 200 and response.text != self._last_stats:
+                    self._last_stats = response.text
+                    self.statsChanged.emit(response.text)
+            except requests.RequestException:
+                pass
+
+            time.sleep(1)
+
 
 app = QGuiApplication(sys.argv)
 app.setOrganizationName("SmartWaste")
@@ -108,6 +133,7 @@ engine.rootContext().setContextProperty(
     "backend", controller
 )
 
+# Main.qml is loaded from disk, so ../guides/ and ../badges/ resolve on disk too.
 QML_FILE = Path(__file__).resolve().parent / "SmartWasteFrontend" / "Main.qml"
 
 engine.load(QUrl.fromLocalFile(str(QML_FILE)))
