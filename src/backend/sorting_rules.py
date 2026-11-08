@@ -19,4 +19,9 @@ def get_bin(confidence, category):
     elif (category == "garbage"):
         return "garbage_bin"
 
-
+BIN_TO_LED = {
+    "compost_bin": 0,     # leftmost: green (food scraps)
+    "recycling_bin": 1,   # second: recyclable containers
+    "paper_bin": 2,       # third: paper
+    "garbage_bin": 3,     # fourth: garbage
+}
