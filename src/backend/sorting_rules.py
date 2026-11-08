@@ -27,6 +27,6 @@ BIN_TO_LED = {
     "garbage_bin": 3,     
 }
 
-#we are just going to put the trash led if we're in the worst case cause ???? 
+#using the dictionary 
 def get_led(bin_name):
     return BIN_TO_LED.get(bin_name, 3)
