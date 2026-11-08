@@ -17,7 +17,6 @@ ApplicationWindow {
     // ---------- STATE ----------
     property string mode: "live"            // live | analyzing | result
     property string systemStatus: "Live feed"
-    property string detectedItem: ""
     property string activeBin: ""           // "", food, recyclable, paper, garbage
     property real confidence: 0
     property real shownConfidence: 0
@@ -171,10 +170,9 @@ ApplicationWindow {
         return c >= 0.85 ? "High certainty" : (c >= 0.6 ? "Medium certainty" : "Low certainty")
     }
 
-    function showResult(item, category, conf) {
+    function showResult(category, conf) {
         var info = binInfo[category]
         if (!info) return
-        detectedItem = item
         activeBin = category
         confidence = conf
         shownConfidence = conf
@@ -192,7 +190,6 @@ ApplicationWindow {
         infoOverlay.close()
         activeBin = ""
         shownConfidence = 0
-        detectedItem = ""
         tip = ""
         mode = "live"
     }
@@ -270,7 +267,7 @@ ApplicationWindow {
         Image {
             anchors.fill: parent
             anchors.margins: 1
-            source: "badges/" + slot.badgeId + ".png"
+            source: "../badges/" + slot.badgeId + ".png"
             fillMode: Image.PreserveAspectFit
             mipmap: true
             opacity: slot.unlocked ? 1 : 0
@@ -831,7 +828,7 @@ ApplicationWindow {
                             width: parent.width
                             text: root.activeBin === ""
                                   ? "Pause the feed on an item and the matching bin will open."
-                                  : root.detectedItem + ". " + root.tip
+                                  : root.tip
                             color: "#E3EAE5"
                             font.pixelSize: 15
                             wrapMode: Text.Wrap
@@ -844,9 +841,9 @@ ApplicationWindow {
                     id: binRow
                     Layout.fillWidth: true
                     Layout.fillHeight: false
-                    Layout.preferredHeight: 150
-                    Layout.minimumHeight: 150
-                    Layout.maximumHeight: 150
+                    Layout.preferredHeight: 190
+                    Layout.minimumHeight: 190
+                    Layout.maximumHeight: 190
                     spacing: 12
 
                     BinCard {
@@ -962,7 +959,7 @@ ApplicationWindow {
             id: toastRow
             anchors.centerIn: parent
             spacing: 10
-            Image { width: 38; height: 38; source: "badges/" + toast.badgeId + ".png"; fillMode: Image.PreserveAspectFit; mipmap: true }
+            Image { width: 38; height: 38; source: "../badges/" + toast.badgeId + ".png"; fillMode: Image.PreserveAspectFit; mipmap: true }
             Text { anchors.verticalCenter: parent.verticalCenter; text: toast.text; color: "white"; font.bold: true; font.pixelSize: 14 }
         }
     }
@@ -1072,7 +1069,7 @@ ApplicationWindow {
                             color: "white"; font.bold: true; font.pixelSize: 32
                         }
                         Text {
-                            text: infoOverlay.info ? root.detectedItem + ". " + infoOverlay.info.tip : ""
+                            text: infoOverlay.info ? infoOverlay.info.tip : ""
                             color: "#E3EAE5"; font.pixelSize: 15
                         }
                     }
@@ -1184,13 +1181,20 @@ ApplicationWindow {
         NumberAnimation { target: factText; property: "opacity"; to: 1; duration: 300 }
     }
 
+    // ---------- TEMP: manual test keys (delete when done) ----------
+    Shortcut { sequence: "1"; onActivated: root.showResult("food", 0.95) }
+    Shortcut { sequence: "2"; onActivated: root.showResult("recyclable", 0.72) }
+    Shortcut { sequence: "3"; onActivated: root.showResult("paper", 0.55) }
+    Shortcut { sequence: "4"; onActivated: root.showResult("garbage", 0.35) }
+    Shortcut { sequence: "0"; onActivated: root.resetToLive() }
+
     // ---------- BACKEND SIGNALS ----------
     Connections {
         target: backend
 
         function onStatusChanged(status) { root.systemStatus = status }
         function onResultChanged(item, bin, conf) {
-            root.showResult(item, root.binKey(bin), conf)
+            root.showResult(root.binKey(bin), conf)
         }
     }
 }
