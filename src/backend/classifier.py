@@ -6,11 +6,16 @@ from pydantic import BaseModel
 #these are just the random catergories 
 CATEGORIES = ["food_scraps", "recyclable_container", "paper", "garbage"]
 
+#the AI result is here 
 class AIResult(BaseModel):
     category: str
     confidence: float 
 
 
 #just it randomly picking a category for now so that it can run 
-def classify_image(image_bytes: bytes) -> tuple[str, float]:
-    return random.choice(CATEGORIES), round(random.uniform(0.3, 0.99), 2)
+def classify_image(image_bytes: bytes) -> AIResult:
+    ##AI LOGIC GOES IN HERE adsgjghsdll;ag
+     return AIResult(
+        category=random.choice(CATEGORIES),
+        confidence=round(random.uniform(0.3, 0.99), 2),
+    )

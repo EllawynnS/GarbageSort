@@ -1,10 +1,12 @@
 #This should be the mainhub of our back end system 
 #Dealing with requests, dealing with our "middle-people" within the application
 
+import base64
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from backend.sorting_rules import get_bin
+from backend.sorting_rules import get_bin, get_led
 from backend.classifier import classify_image
 
 
@@ -35,7 +37,7 @@ class FrontendResult(BaseModel):
     category: str
     confidence: float
 
-#Don't think I need this anymore
+
 
 #the lastest result should be the one shown to the front end, may cause issues if thrown incorrectly
 latest_result: FrontendResult | None = None
@@ -49,65 +51,58 @@ def read_root():
     return {"message": "GarbageSort backend is running"}
 
 #Below is where the two buttons lie 
+
+#start button
+#this should be the start button 
 @app.post("/start")
 def start():
     global is_running
     is_running = True
     return {"running": True}
 
-# hardware: stop button
+#stop button 
 @app.post("/stop")
 def stop():
     global is_running
     is_running = False
     return {"running": False}
 
-#when we need to classify the files
-@app.post("/classify")
-def classify_item(data: Classification):
-
-    # Get the category predicted by the AI
-    category = data.category
-
-    # Get the AI confidence
-    confidence = data.confidence
-
-    # Determine which bin to use
-    recommended_bin = get_bin(confidence, category)
-
-    # Return the result
-    return {
-        "category": category,
-        "confidence": confidence,
-        "recommended_bin": recommended_bin
-    }
-
-# receives an image, returns what it is and which bin it goes in
-@app.post("/classify", response_model=Classification)
+###
+# hardware sends the photo, gets back which LED to light
+@app.post("/classify", response_model=HardwareResponse)
 async def classify_item(image: UploadFile = File(...)):
     global latest_result
 
-    # make sure we actually got an image
-    if not (image.content_type or "").startswith("image/"):
+    if not is_running:
+        raise HTTPException(status_code=409, detail="Not running. Press start first.")
+
+    content_type = image.content_type or ""
+    if not content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
     image_bytes = await image.read()
 
-    # ask the AI what it thinks
-    category, confidence = classify_image(image_bytes)
+    # feed the photo to the CV model
+    ai_result = classify_image(image_bytes)
 
-    # determine which bin to use
-    recommended_bin = get_bin(confidence, category)
+    # decide bin and LED
+    recommended_bin = get_bin(ai_result.confidence, ai_result.category)
+    led = get_led(recommended_bin)
 
-    latest_result = Classification(
-        category=category,
-        confidence=confidence,
-        recommended_bin=recommended_bin,
+    # save what the front end needs
+    encoded = base64.b64encode(image_bytes).decode("utf-8")
+    latest_result = FrontendResult(
+        image=f"data:{content_type};base64,{encoded}",
+        category=ai_result.category,
+        confidence=ai_result.confidence,
     )
-    return latest_result
 
-# most recent result
-@app.get("/latest", response_model=Classification)
+    return HardwareResponse(recommended_bin=recommended_bin, led=led)
+
+# most recent result, added check so that there isn't any errors
+
+#Checking whether the result is there
+@app.get("/latest", response_model=FrontendResult)
 def get_latest():
     if latest_result is None:
         raise HTTPException(status_code=404, detail="No item classified yet")
