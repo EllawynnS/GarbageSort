@@ -67,8 +67,7 @@ class FrontendResult(BaseModel):
 
 is_running = False
 
-<<<<<<< HEAD
-=======
+
 def light_led(led: int):
     """Tell the Arduino which LED to light. An LED problem never breaks a scan."""
     if led_controller is None:
@@ -77,7 +76,7 @@ def light_led(led: int):
         led_controller.set_category(led)
     except Exception as error:
         print(f"WARNING: could not send to Arduino: {error}")
->>>>>>> arduino
+
 
 def process_photo(image_bytes: bytes, content_type: str) -> HardwareResponse:
     ai_result = classify_image(image_bytes)
