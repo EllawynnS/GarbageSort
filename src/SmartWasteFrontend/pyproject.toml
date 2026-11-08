@@ -2,4 +2,4 @@
 name = "PySide QtQuick Project"
 
 [tool.pyside6-project]
-files = ["main.py", "SmartWasteFrontend/Main.qml", "SmartWasteFrontend/qmldir"]
+files = ["SmartWasteFrontend/Main.qml", "SmartWasteFrontend/qmldir", "guideImages.qrc", "main.py"]

@@ -28,6 +28,8 @@ class AppController(QObject):
 
 
 app = QGuiApplication(sys.argv)
+app.setOrganizationName("SmartWaste")
+app.setApplicationName("SmartWaste")
 engine = QQmlApplicationEngine()
 
 controller = AppController()
