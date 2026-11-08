@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from backend.sorting_rules import get_bin, get_led
 from backend.classifier import classify_image
+from backend.db import get_latest_item, init_database, save_item
 from hardware.api.camera_routes import router as camera_router, camera
 
 from contextlib import asynccontextmanager 
@@ -15,6 +16,7 @@ import cv2
 
 @asynccontextmanager
 async def lifespan(app):
+    init_database()
     try:
         camera.start()
     except RuntimeError as error:
@@ -54,29 +56,16 @@ class FrontendResult(BaseModel):
 
 
 
-#the lastest result should be the one shown to the front end, may cause issues if thrown incorrectly
-
-
-latest_result: FrontendResult | None = None
-
 is_running = False
 
 
 def process_photo(image_bytes: bytes, content_type: str) -> HardwareResponse:
-    global latest_result
-
     ai_result = classify_image(image_bytes)
 
     recommended_bin = get_bin(ai_result.confidence, ai_result.category)
     led = get_led(recommended_bin)
 
-    encoded = base64.b64encode(image_bytes).decode("utf-8")
-    latest_result = FrontendResult(
-        image=f"data:{content_type};base64,{encoded}",
-        category=ai_result.category,
-        confidence=ai_result.confidence,
-        recommended_bin=recommended_bin,
-    )
+    save_item(ai_result.category, ai_result.confidence, image_bytes, content_type)
 
     return HardwareResponse(recommended_bin=recommended_bin, led=led)
 
@@ -148,7 +137,16 @@ def stop():
 #Checking whether the result is there
 @app.get("/latest", response_model=FrontendResult)
 def get_latest():
-    if latest_result is None:
+    item = get_latest_item()
+    if item is None:
         raise HTTPException(status_code=404, detail="No item classified yet")
-    return latest_result
+
+    category, confidence, image_bytes, image_type = item
+    encoded = base64.b64encode(image_bytes).decode("utf-8")
+    return FrontendResult(
+        image=f"data:{image_type};base64,{encoded}",
+        category=category,
+        confidence=confidence,
+        recommended_bin=get_bin(confidence, category),
+    )
  
