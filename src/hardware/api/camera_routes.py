@@ -6,8 +6,7 @@ from fastapi.responses import Response
 from fastapi.responses import StreamingResponse
 
 
-from src.hardware.camera import Webcam
-
+from hardware.camera import Webcam
 
 
 
