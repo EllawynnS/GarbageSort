@@ -6,6 +6,7 @@ import base64
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from backend.classifier import classify_image, warm_up
 from backend.sorting_rules import get_bin, get_led
 from backend.classifier import classify_image
 from backend.db import get_latest_item, init_database, save_item
@@ -18,9 +19,13 @@ import cv2
 async def lifespan(app):
     init_database()
     try:
+        warm_up()
+    except Exception as error:
+        print(f"WARNING: classifier not loaded: {error}")
+    try:
         camera.start()
     except RuntimeError as error:
-        print(f"WARNING: camera not started: {error}")   # the API still works without a webcam
+        print(f"WARNING: camera not started: {error}")   
     yield
     camera.stop()
 
