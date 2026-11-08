@@ -131,4 +131,11 @@ def classify_waste(image_path: str) -> dict[str, Any]:
     return result
 
 
+def get_top_waste_prediction(image_path: str) -> tuple[str, float]:
+    """Return the most likely waste type and its probability.
 
+    Returns:
+        (waste_type, confidence), where confidence is a percentage (0-100).
+    """
+    result = classify_waste(image_path)
+    return result["class"], result["confidence"]
