@@ -11,9 +11,13 @@ from backend.sorting_rules import get_bin, get_led
 from backend.classifier import classify_image
 from backend.db import get_latest_item, init_database, save_item
 from hardware.api.camera_routes import router as camera_router, camera
+import os
+from hardware.led import LEDController
 
 from contextlib import asynccontextmanager 
 import cv2 
+
+led_controller = None
 
 @asynccontextmanager
 async def lifespan(app):
@@ -63,12 +67,24 @@ class FrontendResult(BaseModel):
 
 is_running = False
 
+<<<<<<< HEAD
+=======
+def light_led(led: int):
+    """Tell the Arduino which LED to light. An LED problem never breaks a scan."""
+    if led_controller is None:
+        return
+    try:
+        led_controller.set_category(led)
+    except Exception as error:
+        print(f"WARNING: could not send to Arduino: {error}")
+>>>>>>> arduino
 
 def process_photo(image_bytes: bytes, content_type: str) -> HardwareResponse:
     ai_result = classify_image(image_bytes)
 
     recommended_bin = get_bin(ai_result.confidence, ai_result.category)
     led = get_led(recommended_bin)
+    light_led(led)
 
     save_item(ai_result.category, ai_result.confidence, image_bytes, content_type)
 
@@ -85,6 +101,11 @@ async def classify_item(image: UploadFile = File(...)):
     content_type = image.content_type or ""
     if not content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
+
+    try:
+        led_controller = LEDController()
+    except Exception as error:
+        print(f"WARNING: Arduino not connected: {error}")  
 
     image_bytes = await image.read()
     return process_photo(image_bytes, content_type)
