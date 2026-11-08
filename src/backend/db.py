@@ -1,7 +1,5 @@
 import sqlite3
 
-#We should be creating the database here 
-
 db_file = "bin_identifier.db"
 
 def init_database():
@@ -16,8 +14,6 @@ def init_database():
     confidence REAL,
     image_type TEXT
     )""")
-
-    #closing the database
 
     connection.commit()
     connection.close()
