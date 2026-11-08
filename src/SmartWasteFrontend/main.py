@@ -41,24 +41,40 @@ class AppController(QObject):
 
     @Slot()
     def pause(self):
+        # freeze the camera first so the picture stops on the item, then stop processing
         threading.Thread(
-            target=self._call, args=("/stop", "Processing paused"), daemon=True
+            target=self._call,
+            args=(["/camera/freeze", "/stop"], "Processing paused"),
+            daemon=True,
         ).start()
 
     @Slot()
     def resume(self):
+        # restart processing, then let the live camera feed continue
         threading.Thread(
-            target=self._call, args=("/start", "System ready"), daemon=True
+            target=self._call,
+            args=(["/start", "/camera/unfreeze"], "System ready"),
+            daemon=True,
         ).start()
 
-    def _call(self, path, ok_status):
-        try:
-            response = requests.post(f"{API}{path}", timeout=5)
-            response.raise_for_status()
-            self.statusChanged.emit(ok_status)
-        except requests.RequestException:
-            self.statusChanged.emit("Can't reach the API")
-
+    def _call(self, paths, ok_status):
+        """POST to each API path in order. Report the first one that fails."""
+        for path in paths:
+            try:
+                response = requests.post(f"{API}{path}", timeout=5)
+                print(f"[frontend] POST {path} -> {response.status_code}")
+                response.raise_for_status()
+            except requests.HTTPError as error:
+                if path.startswith("/camera"):
+                    self.statusChanged.emit("Camera not available")
+                else:
+                    self.statusChanged.emit(f"API error: {error.response.status_code}")
+                return
+            except requests.RequestException as error:
+                print(f"[frontend] POST {path} failed: {error}")
+                self.statusChanged.emit("Can't reach the API")
+                return
+        self.statusChanged.emit(ok_status)
 
     def _poll_latest(self):
         while True:
@@ -76,7 +92,7 @@ class AppController(QObject):
                             data["confidence"],
                         )
             except requests.RequestException:
-                pass   
+                pass
 
             time.sleep(1)
 
