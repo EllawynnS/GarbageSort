@@ -39,15 +39,12 @@ class AppController(QObject):
     def apiBase(self):
         return API
 
+    # CHANGED: "Pause and analyze" now freezes the picture AND scans it
     @Slot()
     def pause(self):
-        # freeze the camera first so the picture stops on the item, then stop processing
-        threading.Thread(
-            target=self._call,
-            args=(["/camera/freeze", "/stop"], "Processing paused"),
-            daemon=True,
-        ).start()
+        threading.Thread(target=self._pause_and_analyze, daemon=True).start()
 
+    # unchanged: "Resume feed"
     @Slot()
     def resume(self):
         # restart processing, then let the live camera feed continue
@@ -56,6 +53,35 @@ class AppController(QObject):
             args=(["/start", "/camera/unfreeze"], "System ready"),
             daemon=True,
         ).start()
+
+    # NEW: freeze on the item, scan it, show the result
+    def _pause_and_analyze(self):
+        try:
+            # the screen has no Start button, so make sure the API is running
+            requests.post(f"{API}/start", timeout=5)
+
+            self.statusChanged.emit("Analyzing...")
+
+            # keep_frozen=true makes the video stay frozen on the item after the scan
+            response = requests.post(
+                f"{API}/scan", params={"keep_frozen": "true"}, timeout=30
+            )
+            print(f"[frontend] POST /scan -> {response.status_code}")
+
+            if response.status_code == 503:
+                self.statusChanged.emit("Camera not available")
+                return
+            if response.status_code != 200:
+                self.statusChanged.emit(f"API error: {response.status_code}")
+                return
+
+            # show the result straight away instead of waiting for the next poll
+            self._check_latest(force=True)
+            self.statusChanged.emit("Processing paused")
+
+        except requests.RequestException as error:
+            print(f"[frontend] POST /scan failed: {error}")
+            self.statusChanged.emit("Can't reach the API")
 
     def _call(self, paths, ok_status):
         """POST to each API path in order. Report the first one that fails."""
@@ -76,24 +102,29 @@ class AppController(QObject):
                 return
         self.statusChanged.emit(ok_status)
 
+    # CHANGED: the /latest check moved into its own method so both the poller and the scan can use it
+    def _check_latest(self, force=False):
+        """Fetch /latest and update the screen if it changed (or if force is True)."""
+        try:
+            response = requests.get(f"{API}/latest", timeout=3)
+            if response.status_code != 200:
+                return
+            data = response.json()
+        except requests.RequestException:
+            return
+
+        result = (data["category"], data["recommended_bin"], data["confidence"])
+        if force or result != self._last_result:
+            self._last_result = result
+            self.resultChanged.emit(
+                CATEGORY_NAMES.get(data["category"], data["category"]),
+                BIN_NAMES.get(data["recommended_bin"], data["recommended_bin"]),
+                data["confidence"],
+            )
+
     def _poll_latest(self):
         while True:
-            try:
-                response = requests.get(f"{API}/latest", timeout=3)
-                if response.status_code == 200:
-                    data = response.json()
-                    result = (data["category"], data["recommended_bin"], data["confidence"])
-
-                    if result != self._last_result:
-                        self._last_result = result
-                        self.resultChanged.emit(
-                            CATEGORY_NAMES.get(data["category"], data["category"]),
-                            BIN_NAMES.get(data["recommended_bin"], data["recommended_bin"]),
-                            data["confidence"],
-                        )
-            except requests.RequestException:
-                pass
-
+            self._check_latest()
             time.sleep(1)
 
 

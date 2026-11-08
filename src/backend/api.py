@@ -90,9 +90,8 @@ async def classify_item(image: UploadFile = File(...)):
     return process_photo(image_bytes, content_type)
 
 
-# NEW: take a photo with the webcam, classify it, return the bin and LED
 @app.post("/scan", response_model=HardwareResponse)
-def scan():
+def scan(keep_frozen: bool = False):
 
     if not is_running:
         raise HTTPException(status_code=409, detail="Not running. Press start first.")
@@ -103,15 +102,20 @@ def scan():
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error))
 
+    succeeded = False
     try:
         ok, buffer = cv2.imencode(".jpg", frame)
         if not ok:
             raise HTTPException(status_code=500, detail="Could not encode image")
 
-        return process_photo(buffer.tobytes(), "image/jpeg")
+        result = process_photo(buffer.tobytes(), "image/jpeg")
+        succeeded = True
+        return result
 
     finally:
-        camera.unfreeze()    # always resume live video
+        # hardware: always resume live video. Screen: stay frozen after a successful scan
+        if not (keep_frozen and succeeded):
+            camera.unfreeze()
 
 
 #just a health check thingy
