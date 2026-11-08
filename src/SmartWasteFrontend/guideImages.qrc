@@ -1,0 +1,15 @@
+<RCC>
+    <qresource prefix="/recyclableContainersGuide">
+        <file>recyclableContainersGuide.png</file>
+    </qresource>
+    <qresource prefix="/">
+        <file>badges/badge1.png</file>
+        <file>badges/badge2.png</file>
+        <file>badges/badge3.png</file>
+        <file>badges/badge4.png</file>
+        <file>badges/badge5.png</file>
+        <file>badges/badge6.png</file>
+        <file>badges/badge7.png</file>
+        <file>badges/badge8.png</file>
+    </qresource>
+</RCC>

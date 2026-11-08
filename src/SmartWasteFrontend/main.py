@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 import requests
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -82,6 +82,8 @@ class AppController(QObject):
 
 
 app = QGuiApplication(sys.argv)
+app.setOrganizationName("SmartWaste")
+app.setApplicationName("SmartWaste")
 engine = QQmlApplicationEngine()
 
 controller = AppController()
@@ -90,8 +92,9 @@ engine.rootContext().setContextProperty(
     "backend", controller
 )
 
-qml_file = Path(__file__).parent / "SmartWasteFrontend\\Main.qml"
-engine.load(str(qml_file))
+QML_FILE = Path(__file__).resolve().parent / "SmartWasteFrontend" / "Main.qml"
+
+engine.load(QUrl.fromLocalFile(str(QML_FILE)))
 
 if not engine.rootObjects():
     sys.exit(-1)
