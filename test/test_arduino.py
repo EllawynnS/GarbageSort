@@ -1,6 +1,8 @@
 import serial
 import time
 
+from src.hardware.led import LEDController
+
 arduino = serial.Serial(
     "/dev/cu.usbmodem11401",
     9600,
@@ -23,3 +25,35 @@ try:
 
 finally:
     arduino.close()
+
+
+# Test program
+if __name__ == "__main__":
+
+    led = None
+
+    try:
+        led = LEDController(
+            port="/dev/cu.usbmodem1401",
+            baudrate=9600
+        )
+
+        # Test each LED
+        led.set_category(0)  # Compost
+        time.sleep(2)
+
+        led.set_category(1)  # Recycling
+        time.sleep(2)
+
+        led.set_category(2)  # Paper
+        time.sleep(2)
+
+        led.set_category(3)  # Garbage
+        time.sleep(2)
+
+    except serial.SerialException as error:
+        print(f"Arduino connection error: {error}")
+
+    finally:
+        if led is not None:
+            led.close()
