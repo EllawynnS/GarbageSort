@@ -1,378 +1,638 @@
 
 # System Architecture
 
-> **Status:** Initial integration proposal. Confirm proposed interfaces against the actual hardware before implementation.
+> **Status:** Describes the current GarbageSort software implementation and planned hardware integration. Features marked as planned or pending are not yet implemented.
 
 ## 1. Purpose
 
-This document describes the proposed hardware and software architecture for the Hackcamp 2026 project.
+GarbageSort is an AI-assisted waste-sorting system developed for Hackcamp 2026.
 
-The goal is to allow team members to develop individual components independently while maintaining consistent interfaces between them.
+The goal is to identify different types of waste using computer vision and recommend the appropriate disposal category.
 
-The final project requirements and hardware configuration are still being defined.
+The current prototype uses a USB webcam to capture images, a Python backend to process classification requests, and a desktop interface to display results.
 
-## 2. Hardware Overview
+The system is divided into independent software modules to allow team members to develop the frontend, backend, computer vision, and hardware components separately.
 
-| Component | Description | Interface |
+Arduino integration and the physical sorting mechanism are still under development.
+
+## 2. System Overview
+
+### 2.1 Hardware Components
+
+| Component | Description | Interface | Status |
+|---|---|---|---|
+| Laptop / Desktop | Runs the backend, AI model, and frontend | Local processes | In use |
+| Logitech HD USB Webcam | Captures images and video of waste items | USB / UVC | In use |
+| Arduino | Intended to control external electronics | USB serial | Planned |
+| LEDs | Indicate the recommended sorting category | Arduino + driver circuit | Planned |
+| Other sensors | Additional hardware for the sorting system | To be determined | TBD |
+| Sorting mechanism | Physical waste-sorting mechanism | To be determined | In development |
+
+**Camera distinction:** The Logitech webcam is a USB camera, not an IP camera. OpenCV accesses it directly through the computer's USB connection.
+
+### 2.2 Software Components
+
+| Component | Technology | Responsibility |
 |---|---|---|
-| Laptop / Desktop | Runs Python application, AI, backend and frontend | Main computer |
-| Logitech HD USB Webcam | Captures images and video | USB / UVC |
-| Arduino | Controls connected electronics and peripherals | USB serial |
-| LED | Provides controlled lighting | Arduino + driver circuit |
-| Other sensors | To be determined | Depends on sensor |
+| Frontend | PySide6 + QML | User interface and result display |
+| Frontend communication | Requests | HTTP communication with backend |
+| Backend | FastAPI | Application logic and API endpoints |
+| Server | Uvicorn | Runs the FastAPI application |
+| Camera | OpenCV | Captures and processes camera frames |
+| Computer vision | PyTorch | Runs the image-classification model |
+| Model repository | Hugging Face Hub | Downloads model files |
+| Model framework | Transformers | Loads the ViT model and image processor |
+| Image processing | Pillow | Opens and converts images |
+| Database | SQLite | Stores classification results and images |
 
-**Camera distinction:** The Logitech webcam is a USB camera, not normally an IP camera. If a separate Ethernet/IP camera is being used, document its model and supported streaming protocol separately.
+## 3. High-Level Software Architecture
 
-## 3. High-Level Architecture
+The system follows a frontend-backend architecture.
 
-### Component Responsibilities
+The frontend communicates with the backend through HTTP requests. The backend coordinates the camera, classification pipeline, sorting rules, and database.
 
-**Frontend**
-- Displays camera imagery.
-- Displays AI classification results.
-- Provides user controls.
-- Displays hardware status and errors.
+```mermaid
+flowchart TD
+    User[User]
+    Frontend[PySide6 Frontend]
+    API[FastAPI Backend]
+    Camera[OpenCV Camera Module]
+    Vision[Computer Vision Module]
+    Rules[Sorting Rules]
+    Database[(SQLite Database)]
+    Arduino[Arduino]
+    Hardware[LEDs / Sorting Mechanism]
 
-**Backend**
-- Coordinates hardware and AI.
-- Controls the capture workflow.
-- Handles errors and timeouts.
-- Sends results to the frontend.
-
-**Camera Module**
-- Connects to the webcam.
-- Captures images and video frames.
-- Returns images in a consistent format.
-
-**Vision Module**
-- Preprocesses images.
-- Runs the AI model.
-- Returns classification and confidence information.
-
-**Arduino Interface**
-- Establishes serial communication.
-- Sends commands to the Arduino.
-- Receives and parses responses.
-- Handles communication timeouts.
-
-**Arduino Firmware**
-- Receives commands.
-- Controls connected peripherals.
-- Reads sensor values.
-- Reports hardware status.
-
-## 4. Communication Interfaces
-
-### 4.1 Camera to Python
-
-**Protocol:** USB Video Class (UVC)
-
-**Python library:** OpenCV (`cv2`)
-
-The Logitech webcam connects directly to the computer through USB.
-
-OpenCV retrieves image frames from the camera.
-
-Example:
-
-```python
-import cv2
-
-camera = cv2.VideoCapture(0)
-
-success, frame = camera.read()
-
-if success:
-    cv2.imshow("Camera Feed", frame)
-
-camera.release()
-cv2.destroyAllWindows()
+    User --> Frontend
+    Frontend <-->|HTTP Requests| API
+    API <--> Camera
+    API --> Vision
+    API --> Rules
+    API <--> Database
+    API -.->|Future serial communication| Arduino
+    Arduino -.-> Hardware
 ```
 
-The camera module should return a NumPy array containing the image.
+The dotted connections represent planned hardware integration rather than currently implemented communication.
 
-Important image considerations:
+## 4. Software Module Responsibilities
 
-- OpenCV normally returns images in BGR format.
-- Some AI models expect RGB images.
-- Image resizing and normalization should happen in the preprocessing module.
-- Resolution and frame rate should be agreed upon and tested.
+### 4.1 Frontend
 
-The AI module should receive an image as input rather than connecting directly to the physical camera.
+**Location:** `src/SmartWasteFrontend/`
 
-### 4.2 Python to Arduino
+**Technologies:** PySide6, Qt Quick (QML), Python, Requests
 
-**Protocol:** USB serial
+The frontend provides the graphical interface used to interact with GarbageSort.
 
-**Python library:** PySerial
+Responsibilities:
 
-**Arduino:** Serial interface
+- Display the live webcam feed.
+- Allow users to pause and analyze an item.
+- Display the captured image.
+- Display the predicted waste category.
+- Display classification confidence.
+- Display the recommended waste bin.
+- Display application status and errors.
+- Allow users to resume camera capture.
 
-Proposed initial settings:
+The frontend consists of:
 
-| Setting | Value |
+- `main.py`: Initializes the PySide6 application and Python controller.
+- `SmartWasteFrontend/Main.qml`: Defines the graphical interface.
+- `badges/`: Contains badge images and other interface assets.
+- `recyclableContainersGuide.png`: Provides waste-sorting reference information.
+
+The Python controller communicates with the backend using HTTP requests through the `requests` library.
+
+The frontend does not directly access the physical webcam, run the AI model, or manage the SQLite database.
+
+### 4.2 Backend
+
+**Location:** `src/backend/`
+
+**Technologies:** Python, FastAPI, Uvicorn
+
+The backend coordinates the application's main workflow.
+
+Responsibilities:
+
+- Handle frontend HTTP requests.
+- Manage the image capture workflow.
+- Pass images to the classification module.
+- Process classification results.
+- Apply waste-sorting rules.
+- Store classification results in SQLite.
+- Return results to the frontend.
+- Handle errors and invalid requests.
+
+Main files:
+
+| File | Responsibility |
 |---|---|
-| Connection | USB |
-| Baud rate | 115200 |
-| Encoding | UTF-8 |
-| Message format | JSON |
-| Message delimiter | Newline (`\n`) |
+| `api.py` | Defines FastAPI application and API endpoints |
+| `classifier.py` | Handles classification requests |
+| `db.py` | Manages SQLite database operations |
+| `sorting_rules.py` | Maps categories to recommended bins and LED indices |
+| `system_manager.py` | Reserved for future system coordination |
 
-Both the Arduino and Python application must use the same baud rate.
+### 4.3 Camera Module
 
-#### Example Command
+**Location:** `src/hardware/`
 
-Python sends:
+**Technologies:** OpenCV (`cv2`)
 
-```json
-{"id": 1, "command": "LED_SET", "state": true}
-```
+The camera module connects to the Logitech USB webcam and retrieves image frames.
 
-Arduino responds:
+Responsibilities:
 
-```json
-{"id": 1, "status": "ok"}
-```
+- Initialize the webcam.
+- Continuously capture frames.
+- Maintain the latest available frame.
+- Freeze the current frame when requested.
+- Resume live capture.
+- Release the camera when the application shuts down.
 
-#### Example Sensor Response
+Main files:
 
-```json
-{
-    "type": "sensor_reading",
-    "temperature": 24.5,
-    "status": "ok"
-}
-```
+| File | Responsibility |
+|---|---|
+| `camera.py` | Webcam initialization and frame management |
+| `api/camera_routes.py` | Camera-related HTTP endpoints |
+| `led.py` | Reserved for future LED control |
 
-These are example messages. Final command names and fields should be agreed upon by the firmware and Python developers.
+OpenCV retrieves frames as NumPy arrays in BGR colour format.
 
-#### Communication Rules
+The current camera configuration requests a resolution of 1280 × 720. Actual resolution and frame rate depend on the webcam and driver.
 
-1. Each message must be a complete JSON object.
-2. Each message ends with a newline.
-3. Commands should have defined responses.
-4. Include command IDs to match responses with requests.
-5. Use finite timeouts.
-6. Handle malformed or incomplete messages.
-7. Define how sensor readings are requested or transmitted.
-8. Avoid mixing debugging text with protocol messages.
+The backend encodes captured frames as JPEG before returning them through the API.
 
-**Electrical safety:** Arduino GPIO pins must not directly power high-current loads. Use suitable driver circuits, external power supplies, and protection components. Verify voltage compatibility and grounding before connecting hardware.
+### 4.4 Computer Vision Module
 
-### 4.3 Python Module Communication
+**Location:** `src/vision/`
 
-The backend, camera, and AI modules can initially communicate using ordinary Python function calls.
+**Technologies:** PyTorch, Hugging Face Hub, Transformers, Pillow
 
-There is no need for a network API or message broker for the first prototype.
+The vision module contains the image-classification model used to identify waste items.
 
-Example interfaces:
+The current model implementation uses:
+
+- **PyTorch:** Model inference.
+- **Hugging Face Hub:** Model downloading and version management.
+- **Transformers:** Image processor and ViT model loading.
+- **Pillow:** Image loading and RGB conversion.
+- **Safetensors:** Model weight loading.
+
+The model identifier is:
 
 ```python
-# Capture an image
-image = camera.capture_image()
-
-# Classify the image
-result = classifier.classify(image)
-
-# Send a command to Arduino
-arduino.send_command("LED_SET", state=True)
-
-# Run the complete workflow
-result = system_manager.run_capture_workflow()
+watersplash/waste-classification
 ```
 
-The team should agree on the expected inputs and return values for each function.
+The model is designed to classify waste images.
 
-### 4.4 Backend to Frontend
+The classifier should return:
 
-**Proposed framework:** Streamlit
+- Predicted category.
+- Confidence score.
 
-The frontend should communicate with the backend through Python function calls.
+The model implementation is located in:
 
-The frontend should not directly manage:
-- Camera drivers.
-- Serial communication.
-- Arduino commands.
-- AI model loading.
+```text
+src/vision/classifier.py
+```
 
-If a separate web frontend is introduced later, an API such as FastAPI could be added.
+**Current integration limitation:**
 
-## 5. Image Capture Workflow
+The standalone ViT implementation exists, but the active backend classification function in `src/backend/classifier.py` currently returns placeholder random predictions.
 
-The initial workflow for a user-triggered image capture:
+There are two definitions of `classify_image()` in that file. The second definition overrides the first.
+
+The next integration step is to connect the model in `src/vision/classifier.py` to the backend classification pipeline and remove the placeholder implementation.
+
+### 4.5 Sorting Rules
+
+**Location:** `src/backend/sorting_rules.py`
+
+The sorting rules module maps predicted waste categories to recommended bins.
+
+| Category | Recommended Bin | LED Index |
+|---|---|---|
+| `food_scraps` | `compost_bin` | 0 |
+| `recyclable_container` | `recycling_bin` | 1 |
+| `paper` | `paper_bin` | 2 |
+| `garbage` | `garbage_bin` | 3 |
+
+The backend currently applies a confidence threshold of `0.20`.
+
+Predictions below this threshold are routed to the garbage bin.
+
+The LED index is returned as part of the backend response. It is not yet used to control physical LEDs.
+
+These category mappings must be validated against the waste-sorting requirements of the target community.
+
+### 4.6 Database
+
+**Location:** `src/backend/db.py`
+
+**Technology:** SQLite
+
+The database stores classification results and their associated images.
+
+The current database file is:
+
+```text
+src/backend/bin_identifier.db
+```
+
+The `items` table stores:
+
+| Field | Description |
+|---|---|
+| `item_id` | Unique record identifier |
+| `category` | Predicted waste category |
+| `confidence` | Classification confidence |
+| `image` | Captured or uploaded image bytes |
+| `image_type` | Image MIME type |
+
+The backend can retrieve the latest stored classification result and return it to the frontend.
+
+SQLite is used for local storage, so a separate database server is not required.
+
+## 5. Communication Interfaces
+
+### 5.1 Frontend to Backend
+
+**Protocol:** HTTP
+
+**Python library:** Requests
+
+**Backend address:**
+
+```text
+http://127.0.0.1:8000
+```
+
+The frontend sends HTTP requests to the FastAPI backend.
+
+Main interactions:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/camera/frame` | Retrieves the current camera frame |
+| POST | `/start` | Enables scanning |
+| POST | `/scan` | Starts image capture and classification |
+| POST | `/camera/unfreeze` | Resumes live camera capture |
+| GET | `/latest` | Retrieves the latest classification result |
+
+The QML interface displays the camera feed and classification results through the Python controller.
+
+The controller polls the latest result approximately once per second.
+
+### 5.2 Camera to Backend
+
+**Interface:** Python function calls
+
+The camera module and backend run within the same Python application.
+
+The backend accesses the shared webcam instance.
+
+Main camera operations:
+
+```python
+camera.start()
+camera.get_frame()
+camera.freeze()
+camera.unfreeze()
+camera.get_status()
+camera.stop()
+```
+
+The camera returns image frames to the backend as NumPy arrays.
+
+The backend converts the frames into JPEG image data when required.
+
+### 5.3 Backend to Vision Module
+
+**Interface:** Python function calls
+
+The backend passes image data to the classification module.
+
+The intended workflow is:
+
+```python
+image_bytes = ...
+
+result = classify_image(image_bytes)
+```
+
+The classifier returns the predicted category and confidence score.
+
+The backend then applies the sorting rules and stores the result.
+
+The active backend classification function currently uses placeholder predictions. The standalone ViT implementation still needs to be connected.
+
+### 5.4 Backend to Database
+
+**Interface:** Python SQLite library
+
+The backend uses Python's built-in `sqlite3` library.
+
+The database stores:
+
+- Classification category.
+- Confidence score.
+- Captured image.
+- Image MIME type.
+
+The backend retrieves the latest result when the frontend requests `/latest`.
+
+### 5.5 Backend to Arduino
+
+**Status: Planned**
+
+The intended hardware architecture will allow the Python backend to communicate with an Arduino through USB serial.
+
+The Arduino will eventually control external electronics, such as LEDs or other sorting components.
+
+The planned communication flow is:
+
+```mermaid
+flowchart LR
+    Backend[Python Backend]
+    Serial[USB Serial]
+    Arduino[Arduino]
+    Driver[Driver Circuit]
+    LED[LED Indicators]
+
+    Backend -.-> Serial
+    Serial -.-> Arduino
+    Arduino -.-> Driver
+    Driver -.-> LED
+```
+
+The following components are not yet implemented:
+
+- Arduino firmware.
+- Python serial communication.
+- Serial command protocol.
+- LED control.
+- Physical sorting actuator control.
+
+The Arduino model, baud rate, message format, pin assignments, and electrical requirements must be confirmed before implementation.
+
+**Electrical safety:** Arduino GPIO pins must not directly power high-current loads. Appropriate driver circuits, external power supplies, and protection components must be used.
+
+## 6. Image Capture and Classification Workflow
+
+The following sequence describes the current software workflow.
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant UI as Frontend
-    participant BE as Python Backend
-    participant Arduino
-    participant Camera
-    participant AI as Vision Model
+    participant UI as PySide6 Frontend
+    participant Controller as Python Controller
+    participant API as FastAPI Backend
+    participant Camera as OpenCV Camera
+    participant AI as Classification Module
+    participant Rules as Sorting Rules
+    participant DB as SQLite
 
-    User->>UI: Request capture
-    UI->>BE: Start capture workflow
-    BE->>Arduino: LED_SET (on)
-    Arduino-->>BE: Acknowledge
-    BE->>Camera: Capture image
-    Camera-->>BE: NumPy image
-    BE->>AI: Classify image
-    AI-->>BE: Prediction + confidence
-    BE->>Arduino: LED_SET (off)
-    BE-->>UI: Image + result
-    UI-->>User: Display output
+    User->>UI: Select Pause and Analyze
+    UI->>Controller: Start scan
+    Controller->>API: POST /start
+    Controller->>API: POST /scan
+    API->>Camera: Freeze current frame
+    Camera-->>API: Return frozen frame
+    API->>API: Encode image as JPEG
+    API->>AI: Classify image
+    AI-->>API: Category + confidence
+    Note over AI,API: Currently placeholder predictions
+    API->>Rules: Map category to bin
+    Rules-->>API: Bin recommendation + LED index
+    API->>DB: Save classification and image
+    API-->>Controller: Return scan response
+    Controller->>API: GET /latest
+    API-->>Controller: Return latest result
+    Controller-->>UI: Update interface
+    UI-->>User: Display classification result
+
+    User->>UI: Resume camera
+    UI->>Controller: Resume capture
+    Controller->>API: POST /camera/unfreeze
+    API->>Camera: Resume live frames
 ```
 
-Implementation considerations:
+### Workflow considerations
 
-- Wait for Arduino acknowledgement if controlled lighting is required.
-- Allow lighting to stabilize before capture if necessary.
-- Turn off the LED after the workflow, including when an error occurs.
-- Report camera and AI failures to the frontend.
-- Do not continue inference if image capture fails.
+- The camera must be available before a scan can begin.
+- The backend should reject invalid or unavailable image frames.
+- Classification should only run after successful image capture.
+- Classification results should include a confidence score.
+- The backend should apply sorting rules consistently.
+- Results should be saved before being returned to the frontend.
+- The frontend should display errors when the backend is unavailable.
+- Camera capture should resume after the scan when requested.
 
-## 6. Python Repository Structure
+## 7. API Endpoints
+
+The integrated FastAPI application currently exposes the following endpoints.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/` | Backend health check |
+| POST | `/start` | Enables scanning |
+| POST | `/stop` | Disables scanning |
+| POST | `/scan` | Captures and classifies the current frame |
+| POST | `/classify` | Classifies an uploaded image |
+| GET | `/latest` | Retrieves the latest classification result |
+| GET | `/camera/frame` | Returns the current camera frame |
+| POST | `/camera/freeze` | Freezes the current frame |
+| POST | `/camera/unfreeze` | Resumes camera capture |
+| GET | `/camera/status` | Returns camera status |
+| GET | `/camera/stream` | Streams camera frames |
+
+Interactive API documentation is available at:
 
 ```text
-project/
-├── README.md
-├── SYSTEM_ARCHITECTURE.md
-├── requirements.txt
-├── .gitignore
-├── main.py
-│
-├── config/
-│   └── settings.py
-│
-├── src/
-│   ├── hardware/
-│   │   ├── __init__.py
-│   │   ├── camera.py
-│   │   ├── arduino.py
-│   │   └── led.py
-│   │
-│   ├── vision/
-│   │   ├── __init__.py
-│   │   ├── preprocessing.py
-│   │   └── classifier.py
-│   │
-│   ├── backend/
-│   │   ├── __init__.py
-│   │   └── system_manager.py
-│   │
-│   └── frontend/
-│       ├── __init__.py
-│       ├── app.py
-│       └── components.py
-│
-├── firmware/
-│   └── arduino/
-│       └── arduino.ino
-│
-├── tests/
-│   ├── test_camera.py
-│   ├── test_arduino.py
-│   ├── test_classifier.py
-│   └── test_system.py
-│
-├── data/
-│   ├── samples/
-│   └── processed/
-│
-├── models/
-└── docs/
+http://127.0.0.1:8000/docs
 ```
 
-## 7. Error Handling
+## 8. Python Environment and Execution
 
-The system should account for the following failures:
+The project currently uses Python 3.13.
+
+The backend and frontend run in separate terminals but share the same virtual environment.
+
+### 8.1 Create the virtual environment
+
+Run from the repository root:
+
+```bash
+rm -rf .venv
+
+/opt/homebrew/opt/python@3.13/bin/python3.13 -m venv .venv
+
+source .venv/bin/activate
+```
+
+### 8.2 Backend dependencies
+
+```bash
+pip install uvicorn
+pip install fastapi
+pip install pillow
+pip install torch
+pip install huggingface_hub
+pip install opencv-python
+pip install python-multipart
+pip install transformers
+pip install safetensors
+```
+
+### 8.3 Run the backend
+
+**Terminal 1:**
+
+```bash
+source .venv/bin/activate
+
+cd src
+
+uvicorn backend.api:app --host 0.0.0.0 --port 8000
+```
+
+### 8.4 Frontend dependencies
+
+Open another terminal and activate the same environment:
+
+```bash
+cd /path/to/GarbageSort
+
+source .venv/bin/activate
+
+pip install PySide6
+pip install requests
+```
+
+### 8.5 Run the frontend
+
+**Terminal 2:**
+
+```bash
+cd src/SmartWasteFrontend
+
+python main.py
+```
+
+The frontend communicates with the backend through:
+
+```text
+http://127.0.0.1:8000
+```
+
+## 9. Error Handling
+
+The application should account for the following conditions.
 
 | Failure | Expected Behaviour |
 |---|---|
 | Webcam unavailable | Report camera error |
 | Image capture fails | Reject invalid frame |
-| Arduino disconnected | Report connection error |
-| Serial timeout | Stop waiting and report error |
-| Invalid Arduino response | Reject malformed response |
-| AI inference fails | Report inference error |
-| Low-confidence prediction | Return uncertain/unknown result |
-| Frontend request fails | Display error and allow retry |
+| Backend unavailable | Display connection error |
+| Invalid image upload | Return an API error |
+| Classification fails | Report inference error |
+| Low-confidence prediction | Route to uncertain/unknown handling |
+| Database operation fails | Report storage error |
+| Arduino disconnected | Report hardware connection error once integration is implemented |
+| Serial timeout | Stop waiting and report error once integration is implemented |
 
-For actuators and potentially hazardous hardware, define safe states and appropriate hardware-level protections. Do not rely solely on the Python application for emergency stopping or electrical protection.
+Hardware safety should not depend solely on the Python application. Any physical actuators must have appropriate hardware-level protections and safe states.
 
-## 9. Testing Strategy
+## 10. Testing Strategy
 
-Test individual modules before testing the entire system.
+Test individual modules before testing the complete system.
 
-**Camera**
-- Device detection.
-- Image capture.
-- Resolution.
-- Colour format.
-- Disconnect and reconnect.
+### Camera
 
-**Arduino**
-- Serial connection.
-- Command parsing.
-- Acknowledgements.
-- Timeouts.
-- Invalid messages.
+- Webcam detection.
+- Frame capture.
+- Camera resolution.
+- Freeze and resume functionality.
+- Camera disconnection and reconnection.
 
-**Computer Vision**
-- Image input format.
-- Preprocessing.
-- Model inference.
-- Classification results.
-- Uncertainty handling.
+### Backend
 
-**Backend**
-- Workflow order.
+- API endpoint responses.
+- Image capture workflow.
+- Invalid image handling.
 - Error propagation.
-- Hardware timeouts.
-- LED cleanup.
+- Database integration.
 
-**Frontend**
+### Computer Vision
+
+- Image loading.
+- Image preprocessing.
+- Model loading.
+- Model inference.
+- Classification confidence.
+- Category mapping.
+
+### Frontend
+
+- Camera display.
 - User interactions.
-- Loading states.
-- Result display.
-- Error display.
+- Pause and resume functionality.
+- Classification result display.
+- Backend connection errors.
 
-**System**
-- Repeated captures.
-- Hardware disconnections.
-- Recovery.
-- End-to-end operation.
+### Hardware
 
-Use mocks for hardware and model dependencies where possible so backend logic can be tested without physical hardware.
+Once implemented:
 
-## 10. Decisions to Confirm
+- Serial communication.
+- Arduino command parsing.
+- LED control.
+- Sensor readings.
+- Hardware disconnection handling.
 
-| Decision | Status |
-|---|---|
-| Exact Arduino model | TBD |
-| Exact Logitech webcam model | TBD |
-| Separate IP camera | Confirm |
-| Camera resolution and frame rate | Test |
-| Arduino serial port | Configure per computer |
-| Serial baud rate | Proposed: 115200 |
-| JSON command structure | To be finalized |
-| LED driver and power supply | To be confirmed |
-| Other sensors and actuators | To be confirmed |
-| AI framework and model | TBD |
-| Frontend framework | TBD; Streamlit proposed |
-| Classification confidence threshold | To be determined |
+### Full System
 
-## 11. Team Development
+- Repeated image captures.
+- End-to-end classification.
+- Database persistence.
+- Frontend and backend communication.
+- Hardware integration.
+- Recovery from errors.
+
+Use mocked hardware and model dependencies where possible so that software components can be tested independently.
+
+## 11. Current Development Status
+
+| Component | Status | Next Step |
+|---|---|---|
+| PySide6 frontend | Implemented | Continue UI development |
+| FastAPI backend | Implemented | Continue API development |
+| Webcam integration | Implemented | Test reliability |
+| Image capture | Implemented | Test repeated scans |
+| ViT model | Standalone implementation exists | Connect to backend |
+| Image preprocessing | Pending | Implement shared preprocessing |
+| Sorting rules | Implemented | Validate category mapping |
+| SQLite database | Implemented | Expand result management if needed |
+| Arduino firmware | Pending | Develop firmware |
+| Serial communication | Pending | Define protocol |
+| LED control | Pending | Implement driver and control logic |
+| Physical sorting | In development | Finalize mechanical design |
+
+## 12. Team Development
 
 Suggested development responsibilities:
 
-- **Camera integration:** OpenCV capture and image interface.
-- **Arduino integration:** Firmware, serial protocol, and peripheral control.
-- **Computer vision:** Image preprocessing and model inference.
-- **Backend:** System coordination and error handling.
-- **Frontend:** User interface and result presentation.
+- **Frontend:** PySide6, QML, interface design, and HTTP requests.
+- **Backend:** FastAPI, API endpoints, database operations, and application coordination.
+- **Computer Vision:** Model integration, image preprocessing, and classification testing.
+- **Hardware:** Arduino firmware, electrical connections, LEDs, sensors, and physical sorting components.
 
-Changes to shared interfaces should be discussed and documented.
+Changes to shared interfaces should be communicated and documented.
 
-Keep the integration branch runnable and merge tested changes through pull requests.
-
+The integration branch should remain runnable, and tested changes should be merged through pull requests.
