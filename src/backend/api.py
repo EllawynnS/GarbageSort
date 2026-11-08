@@ -50,6 +50,7 @@ class FrontendResult(BaseModel):
     image: str        
     category: str
     confidence: float
+    recommended_bin: str  
 
 
 
@@ -77,6 +78,7 @@ def process_photo(image_bytes: bytes, content_type: str) -> HardwareResponse:
         image=f"data:{content_type};base64,{encoded}",
         category=ai_result.category,
         confidence=ai_result.confidence,
+        recommended_bin=recommended_bin,
     )
 
     return HardwareResponse(recommended_bin=recommended_bin, led=led)

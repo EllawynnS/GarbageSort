@@ -13,10 +13,10 @@ ApplicationWindow {
     title: "Smart Waste - AI Sorting Assistant"
     color: "#080D0B"
 
-    property string systemStatus: "System ready"
-    property string detectedItem: "Aluminum can"
-    property string recommendedBin: "Recycling"
-    property real confidence: 0.94
+    
+    property string detectedItem: "No item yet"
+    property string recommendedBin: "-"
+    property real confidence: 0
 
     ColumnLayout {
         anchors.fill: parent
@@ -110,13 +110,73 @@ ApplicationWindow {
                     }
 
                     // VIDEO PLACEHOLDER
+                                        // LIVE VIDEO
                     Rectangle {
+                        id: videoBox
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: 16
                         color: "#080D0B"
+                        clip: true
 
+                        property int frameNumber: 0
+                        property bool nextIsA: true     // which image loads the next frame
+                        property bool shownIsA: true    // which image is on screen
+                        property bool hasVideo: false
+
+                        Image {
+                            id: frameA
+                            anchors.fill: parent
+                            fillMode: Image.PreserveAspectFit
+                            cache: false
+                            asynchronous: true
+                            visible: videoBox.shownIsA
+                            onStatusChanged: {
+                                if (status === Image.Ready) {
+                                    videoBox.shownIsA = true
+                                    videoBox.hasVideo = true
+                                } else if (status === Image.Error) {
+                                    videoBox.hasVideo = false
+                                }
+                            }
+                        }
+
+                        Image {
+                            id: frameB
+                            anchors.fill: parent
+                            fillMode: Image.PreserveAspectFit
+                            cache: false
+                            asynchronous: true
+                            visible: !videoBox.shownIsA
+                            onStatusChanged: {
+                                if (status === Image.Ready) {
+                                    videoBox.shownIsA = false
+                                    videoBox.hasVideo = true
+                                } else if (status === Image.Error) {
+                                    videoBox.hasVideo = false
+                                }
+                            }
+                        }
+
+                        // asks the API for a new frame about 10 times a second
+                        Timer {
+                            interval: 100
+                            running: true
+                            repeat: true
+                            onTriggered: {
+                                videoBox.frameNumber++
+                                var url = backend.apiBase + "/camera/frame?t=" + videoBox.frameNumber
+                                if (videoBox.nextIsA)
+                                    frameA.source = url
+                                else
+                                    frameB.source = url
+                                videoBox.nextIsA = !videoBox.nextIsA
+                            }
+                        }
+
+                        // no video, only placeholder just in case
                         Column {
+                            visible: !videoBox.hasVideo
                             anchors.centerIn: parent
                             spacing: 12
 
@@ -348,11 +408,17 @@ ApplicationWindow {
         }
     }
 
-    Connections {
+        Connections {
         target: backend
 
         function onStatusChanged(status) {
             systemStatus = status
+        }
+
+        function onResultChanged(item, bin, conf) {
+            detectedItem = item
+            recommendedBin = bin
+            confidence = conf
         }
     }
 }
