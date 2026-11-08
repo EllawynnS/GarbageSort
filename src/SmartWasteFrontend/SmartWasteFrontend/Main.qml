@@ -668,7 +668,7 @@ ApplicationWindow {
                         Image {
                             id: frameA
                             anchors.fill: parent
-                            fillMode: Image.PreserveAspectFit
+                            fillMode: Image.PreserveAspectCrop   // fills the box; use PreserveAspectFit to see the whole frame
                             cache: false
                             asynchronous: true
                             visible: videoArea.shownIsA
@@ -684,7 +684,7 @@ ApplicationWindow {
                         Image {
                             id: frameB
                             anchors.fill: parent
-                            fillMode: Image.PreserveAspectFit
+                            fillMode: Image.PreserveAspectCrop   // fills the box; use PreserveAspectFit to see the whole frame
                             cache: false
                             asynchronous: true
                             visible: !videoArea.shownIsA
@@ -769,7 +769,7 @@ ApplicationWindow {
             // ===== RIGHT: CONFIDENCE, RESULT, BINS =====
             ColumnLayout {
                 Layout.fillHeight: true
-                Layout.preferredWidth: Math.max(470, root.width * 0.44)
+                Layout.preferredWidth: Math.max(440, root.width * 0.38)
                 spacing: 18
 
                 // CONFIDENCE
@@ -807,6 +807,7 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.minimumHeight: 150
                     radius: 20
                     color: root.activeBin === "" ? "#18201B" : root.binInfo[root.activeBin].card
                     Behavior on color { ColorAnimation { duration: 400 } }
@@ -842,7 +843,10 @@ ApplicationWindow {
                 RowLayout {
                     id: binRow
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 170
+                    Layout.fillHeight: false
+                    Layout.preferredHeight: 150
+                    Layout.minimumHeight: 150
+                    Layout.maximumHeight: 150
                     spacing: 12
 
                     BinCard {
