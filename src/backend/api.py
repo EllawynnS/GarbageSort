@@ -21,6 +21,10 @@ led_controller = None
 
 @asynccontextmanager
 async def lifespan(app):
+
+    global led_controller
+
+
     init_database()
     try:
         warm_up()
@@ -32,6 +36,8 @@ async def lifespan(app):
         print(f"WARNING: camera not started: {error}")   
     yield
     camera.stop()
+    if led_controller is not None:          
+        led_controller.close()                 
 
 app = FastAPI(lifespan=lifespan)
 
@@ -67,8 +73,6 @@ class FrontendResult(BaseModel):
 
 is_running = False
 
-<<<<<<< HEAD
-=======
 def light_led(led: int):
     """Tell the Arduino which LED to light. An LED problem never breaks a scan."""
     if led_controller is None:
@@ -77,7 +81,6 @@ def light_led(led: int):
         led_controller.set_category(led)
     except Exception as error:
         print(f"WARNING: could not send to Arduino: {error}")
->>>>>>> arduino
 
 def process_photo(image_bytes: bytes, content_type: str) -> HardwareResponse:
     ai_result = classify_image(image_bytes)
@@ -100,12 +103,7 @@ async def classify_item(image: UploadFile = File(...)):
 
     content_type = image.content_type or ""
     if not content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
-
-    try:
-        led_controller = LEDController()
-    except Exception as error:
-        print(f"WARNING: Arduino not connected: {error}")  
+        raise HTTPException(status_code=400, detail="File must be an image") 
 
     image_bytes = await image.read()
     return process_photo(image_bytes, content_type)
