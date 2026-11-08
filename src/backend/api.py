@@ -6,19 +6,30 @@ import base64
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from backend.classifier import classify_image, warm_up
 from backend.sorting_rules import get_bin, get_led
 from backend.classifier import classify_image
+from backend.db import get_latest_item, init_database, save_item
 from hardware.api.camera_routes import router as camera_router, camera
+import os
+from hardware.led import LEDController
 
 from contextlib import asynccontextmanager 
 import cv2 
 
+led_controller = None
+
 @asynccontextmanager
 async def lifespan(app):
+    init_database()
+    try:
+        warm_up()
+    except Exception as error:
+        print(f"WARNING: classifier not loaded: {error}")
     try:
         camera.start()
     except RuntimeError as error:
-        print(f"WARNING: camera not started: {error}")   # the API still works without a webcam
+        print(f"WARNING: camera not started: {error}")   
     yield
     camera.stop()
 
@@ -50,34 +61,29 @@ class FrontendResult(BaseModel):
     image: str        
     category: str
     confidence: float
+    recommended_bin: str  
 
 
 
-#the lastest result should be the one shown to the front end, may cause issues if thrown incorrectly
-latest_result: FrontendResult | None = None
-
-#this should be changing with our two start and stop buttons
 is_running = False
 
-#processing photo? 
+def light_led(led: int):
+    """Tell the Arduino which LED to light. An LED problem never breaks a scan."""
+    if led_controller is None:
+        return
+    try:
+        led_controller.set_category(led)
+    except Exception as error:
+        print(f"WARNING: could not send to Arduino: {error}")
 
 def process_photo(image_bytes: bytes, content_type: str) -> HardwareResponse:
-    global latest_result
-
-    # feed the photo to the CV model
     ai_result = classify_image(image_bytes)
 
-    # decide bin and LED
     recommended_bin = get_bin(ai_result.confidence, ai_result.category)
     led = get_led(recommended_bin)
+    light_led(led)
 
-    # save what the front end needs
-    encoded = base64.b64encode(image_bytes).decode("utf-8")
-    latest_result = FrontendResult(
-        image=f"data:{content_type};base64,{encoded}",
-        category=ai_result.category,
-        confidence=ai_result.confidence,
-    )
+    save_item(ai_result.category, ai_result.confidence, image_bytes, content_type)
 
     return HardwareResponse(recommended_bin=recommended_bin, led=led)
 
@@ -93,13 +99,17 @@ async def classify_item(image: UploadFile = File(...)):
     if not content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
+    try:
+        led_controller = LEDController()
+    except Exception as error:
+        print(f"WARNING: Arduino not connected: {error}")  
+
     image_bytes = await image.read()
     return process_photo(image_bytes, content_type)
 
 
-# NEW: take a photo with the webcam, classify it, return the bin and LED
 @app.post("/scan", response_model=HardwareResponse)
-def scan():
+def scan(keep_frozen: bool = False):
 
     if not is_running:
         raise HTTPException(status_code=409, detail="Not running. Press start first.")
@@ -110,15 +120,20 @@ def scan():
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error))
 
+    succeeded = False
     try:
         ok, buffer = cv2.imencode(".jpg", frame)
         if not ok:
             raise HTTPException(status_code=500, detail="Could not encode image")
 
-        return process_photo(buffer.tobytes(), "image/jpeg")
+        result = process_photo(buffer.tobytes(), "image/jpeg")
+        succeeded = True
+        return result
 
     finally:
-        camera.unfreeze()    # always resume live video
+        # hardware: always resume live video. Screen: stay frozen after a successful scan
+        if not (keep_frozen and succeeded):
+            camera.unfreeze()
 
 
 #just a health check thingy
@@ -143,44 +158,22 @@ def stop():
     is_running = False
     return {"running": False}
 
-# ###
-# # hardware sends the photo, gets back which LED to light
-# @app.post("/classify", response_model=HardwareResponse)
-# async def classify_item(image: UploadFile = File(...)):
-#     global latest_result
-
-#     if not is_running:
-#         raise HTTPException(status_code=409, detail="Not running. Press start first.")
-
-#     content_type = image.content_type or ""
-#     if not content_type.startswith("image/"):
-#         raise HTTPException(status_code=400, detail="File must be an image")
-
-#     image_bytes = await image.read()
-
-#     # feed the photo to the CV model
-#     ai_result = classify_image(image_bytes)
-
-#     # decide bin and LED
-#     recommended_bin = get_bin(ai_result.confidence, ai_result.category)
-#     led = get_led(recommended_bin)
-
-#     # save what the front end needs
-#     encoded = base64.b64encode(image_bytes).decode("utf-8")
-#     latest_result = FrontendResult(
-#         image=f"data:{content_type};base64,{encoded}",
-#         category=ai_result.category,
-#         confidence=ai_result.confidence,
-#     )
-
-#     return HardwareResponse(recommended_bin=recommended_bin, led=led)
 
 # most recent result, added check so that there isn't any errors
 
 #Checking whether the result is there
 @app.get("/latest", response_model=FrontendResult)
 def get_latest():
-    if latest_result is None:
+    item = get_latest_item()
+    if item is None:
         raise HTTPException(status_code=404, detail="No item classified yet")
-    return latest_result
+
+    category, confidence, image_bytes, image_type = item
+    encoded = base64.b64encode(image_bytes).decode("utf-8")
+    return FrontendResult(
+        image=f"data:{image_type};base64,{encoded}",
+        category=category,
+        confidence=confidence,
+        recommended_bin=get_bin(confidence, category),
+    )
  
