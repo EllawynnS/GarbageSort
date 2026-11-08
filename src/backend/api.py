@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from backend.sorting_rules import get_bin, get_led
 from backend.classifier import classify_image
+from backend.db import get_latest_item, init_database, save_item
 from hardware.api.camera_routes import router as camera_router, camera
 
 from contextlib import asynccontextmanager 
@@ -15,6 +16,7 @@ import cv2
 
 @asynccontextmanager
 async def lifespan(app):
+    init_database()
     try:
         camera.start()
     except RuntimeError as error:
@@ -54,32 +56,16 @@ class FrontendResult(BaseModel):
 
 
 
-#the lastest result should be the one shown to the front end, may cause issues if thrown incorrectly
-latest_result: FrontendResult | None = None
-
-#this should be changing with our two start and stop buttons
 is_running = False
 
-#processing photo? 
 
 def process_photo(image_bytes: bytes, content_type: str) -> HardwareResponse:
-    global latest_result
-
-    # feed the photo to the CV model
     ai_result = classify_image(image_bytes)
 
-    # decide bin and LED
     recommended_bin = get_bin(ai_result.confidence, ai_result.category)
     led = get_led(recommended_bin)
 
-    # save what the front end needs
-    encoded = base64.b64encode(image_bytes).decode("utf-8")
-    latest_result = FrontendResult(
-        image=f"data:{content_type};base64,{encoded}",
-        category=ai_result.category,
-        confidence=ai_result.confidence,
-        recommended_bin=recommended_bin,
-    )
+    save_item(ai_result.category, ai_result.confidence, image_bytes, content_type)
 
     return HardwareResponse(recommended_bin=recommended_bin, led=led)
 
@@ -145,44 +131,22 @@ def stop():
     is_running = False
     return {"running": False}
 
-# ###
-# # hardware sends the photo, gets back which LED to light
-# @app.post("/classify", response_model=HardwareResponse)
-# async def classify_item(image: UploadFile = File(...)):
-#     global latest_result
-
-#     if not is_running:
-#         raise HTTPException(status_code=409, detail="Not running. Press start first.")
-
-#     content_type = image.content_type or ""
-#     if not content_type.startswith("image/"):
-#         raise HTTPException(status_code=400, detail="File must be an image")
-
-#     image_bytes = await image.read()
-
-#     # feed the photo to the CV model
-#     ai_result = classify_image(image_bytes)
-
-#     # decide bin and LED
-#     recommended_bin = get_bin(ai_result.confidence, ai_result.category)
-#     led = get_led(recommended_bin)
-
-#     # save what the front end needs
-#     encoded = base64.b64encode(image_bytes).decode("utf-8")
-#     latest_result = FrontendResult(
-#         image=f"data:{content_type};base64,{encoded}",
-#         category=ai_result.category,
-#         confidence=ai_result.confidence,
-#     )
-
-#     return HardwareResponse(recommended_bin=recommended_bin, led=led)
 
 # most recent result, added check so that there isn't any errors
 
 #Checking whether the result is there
 @app.get("/latest", response_model=FrontendResult)
 def get_latest():
-    if latest_result is None:
+    item = get_latest_item()
+    if item is None:
         raise HTTPException(status_code=404, detail="No item classified yet")
-    return latest_result
+
+    category, confidence, image_bytes, image_type = item
+    encoded = base64.b64encode(image_bytes).decode("utf-8")
+    return FrontendResult(
+        image=f"data:{image_type};base64,{encoded}",
+        category=category,
+        confidence=confidence,
+        recommended_bin=get_bin(confidence, category),
+    )
  
