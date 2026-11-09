@@ -8,6 +8,8 @@ from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
+from stats import StatsTracker   # stats.py sits next to this file
+
 API = "http://127.0.0.1:8000"   # if the API runs on another laptop, use its IP here
 
 # how the API's names are shown on screen
@@ -28,16 +30,30 @@ BIN_NAMES = {
 class AppController(QObject):
     statusChanged = Signal(str)
     resultChanged = Signal(str, str, float)    # item, bin, confidence
+    statsChanged = Signal(str)                 # JSON text, handled by applyStats() in Main.qml
 
     def __init__(self):
         super().__init__()
         self._last_result = None
+
+        # keeps the counts and badges in stats.py / stats.json and pushes them to Main.qml
+        self.tracker = StatsTracker(on_change=self.statsChanged.emit)
 
         threading.Thread(target=self._poll_latest, daemon=True).start()
 
     @Property(str, constant=True)
     def apiBase(self):
         return API
+
+    # NEW: the "Reset progress" link in the Stats popup
+    @Slot()
+    def resetProgress(self):
+        self.tracker.reset()
+
+    # NEW: demo keys 7 / 8 / 9 in Main.qml set "days online" to 0 / 1 / 7
+    @Slot(int)
+    def setDemoDays(self, days):
+        self.tracker.set_days(days)
 
     # CHANGED: "Pause and analyze" now freezes the picture AND scans it
     @Slot()
@@ -76,7 +92,10 @@ class AppController(QObject):
                 return
 
             # show the result straight away instead of waiting for the next poll
-            self._check_latest(force=True)
+            result = self._check_latest(force=True)
+            if result is not None:
+                # a scan just finished: count it (updates stats.py and Main.qml)
+                self.tracker.record_scan(BIN_NAMES.get(result[1], result[1]))
             self.statusChanged.emit("Processing paused")
 
         except requests.RequestException as error:
@@ -104,14 +123,15 @@ class AppController(QObject):
 
     # CHANGED: the /latest check moved into its own method so both the poller and the scan can use it
     def _check_latest(self, force=False):
-        """Fetch /latest and update the screen if it changed (or if force is True)."""
+        """Fetch /latest and update the screen if it changed (or if force is True).
+        Returns (category, bin, confidence), or None if /latest could not be read."""
         try:
             response = requests.get(f"{API}/latest", timeout=3)
             if response.status_code != 200:
-                return
+                return None
             data = response.json()
         except requests.RequestException:
-            return
+            return None
 
         result = (data["category"], data["recommended_bin"], data["confidence"])
         if force or result != self._last_result:
@@ -121,6 +141,7 @@ class AppController(QObject):
                 BIN_NAMES.get(data["recommended_bin"], data["recommended_bin"]),
                 data["confidence"],
             )
+        return result
 
     def _poll_latest(self):
         while True:
@@ -145,5 +166,9 @@ engine.load(QUrl.fromLocalFile(str(QML_FILE)))
 
 if not engine.rootObjects():
     sys.exit(-1)
+
+# push the saved stats once now that the QML is loaded, so the header badges show
+# and the very first new badge pops its toast
+controller.statsChanged.emit(controller.tracker.to_json())
 
 sys.exit(app.exec())
